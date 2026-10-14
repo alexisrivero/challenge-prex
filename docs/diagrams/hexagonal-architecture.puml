@@ -1,0 +1,91 @@
+@startuml hexagonal-architecture
+' ---------------------------------------------------------------------------
+' Ports & adapters view of the solution
+' ---------------------------------------------------------------------------
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+package "Primary adapters (driving)" #F7FBFF {
+  [HTTP controllers\n(Login, SearchGifs, FindGif, SaveFavoriteGif)] as Controllers
+  [RecordServiceInteraction\n<<middleware>>] as AuditMw
+  [oauth:ensure-clients\n<<console>>] as Console
+}
+
+package "Application (use cases)" #F3FFF3 {
+  [LoginHandler] as UC1
+  [SearchGifsHandler] as UC2
+  [FindGifHandler] as UC3
+  [SaveFavoriteGifHandler] as UC4
+  [RecordServiceInteractionHandler] as UC5
+}
+
+package "Domain (entities, value objects, ports)" #FFFEF2 {
+  [User / Email / AccessToken] as D1
+  [Gif / GifId / SearchCriteria] as D2
+  [FavoriteGif / Alias] as D3
+  [ServiceInteraction / Payload] as D4
+
+  interface "UserRepository" as P1
+  interface "PasswordHasher" as P2
+  interface "AccessTokenIssuer" as P3
+  interface "GifCatalog" as P4
+  interface "FavoriteGifRepository" as P5
+  interface "ServiceInteractionRepository" as P6
+  interface "Clock" as P7
+}
+
+package "Secondary adapters (driven)" #FFF6F6 {
+  [EloquentUserRepository] as A1
+  [LaravelPasswordHasher] as A2
+  [PassportAccessTokenIssuer] as A3
+  [GiphyGifCatalog] as A4
+  [EloquentFavoriteGifRepository] as A5
+  [EloquentServiceInteractionRepository] as A6
+  [SystemClock] as A7
+}
+
+database "MariaDB" as DB
+cloud "GIPHY API" as GIPHY
+
+Controllers --> UC1
+Controllers --> UC2
+Controllers --> UC3
+Controllers --> UC4
+AuditMw --> UC5
+Console ..> A3
+
+UC1 --> P1
+UC1 --> P2
+UC1 --> P3
+UC1 --> P7
+UC2 --> P4
+UC3 --> P4
+UC4 --> P4
+UC4 --> P5
+UC4 --> P7
+UC5 --> P6
+UC5 --> P7
+
+P1 <|.. A1
+P2 <|.. A2
+P3 <|.. A3
+P4 <|.. A4
+P5 <|.. A5
+P6 <|.. A6
+P7 <|.. A7
+
+A1 --> DB
+A3 --> DB
+A5 --> DB
+A6 --> DB
+A4 --> GIPHY
+
+note right of P4
+  Dependencies always point inwards.
+  The domain declares the port; the
+  infrastructure implements it and the
+  composition root (a Laravel service
+  provider) wires them together.
+end note
+@enduml

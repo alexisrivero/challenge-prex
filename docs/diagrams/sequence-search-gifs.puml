@@ -1,0 +1,48 @@
+@startuml sequence-search-gifs
+' ---------------------------------------------------------------------------
+' UC2 - Search GIFs (GET /api/v1/gifs?query=&limit=&offset=)
+' ---------------------------------------------------------------------------
+skinparam shadowing false
+autonumber
+
+actor "Authenticated client" as Client
+participant "Laravel kernel" as Kernel
+participant "RecordServiceInteraction\n<<middleware>>" as Audit
+participant "auth:api\n<<Passport guard>>" as Guard
+participant "SearchGifsController\n<<primary adapter>>" as Controller
+participant "SearchGifsHandler\n<<use case>>" as Handler
+participant "GifCatalog\n<<port>>" as Port
+participant "GiphyGifCatalog\n<<adapter>>" as Adapter
+participant "GIPHY API" as Giphy
+database "MariaDB" as DB
+
+Client -> Kernel : GET /api/v1/gifs?query=cats&limit=10\nAuthorization: Bearer <jwt>
+Kernel -> Audit : handle()
+Audit -> Guard : authenticate bearer token
+alt invalid or expired token
+  Guard --> Kernel : 401 unauthenticated
+else valid token
+  Guard --> Controller : SearchGifsRequest (validated)
+  Controller -> Handler : handle(SearchGifsQuery)
+  Handler -> Handler : SearchTerm + Pagination\n(domain invariants)
+  Handler -> Port : search(SearchCriteria)
+  Port -> Adapter : search(SearchCriteria)
+  Adapter -> Giphy : GET /v1/gifs/search?q&limit&offset&api_key
+  alt provider unreachable / 5xx
+    Giphy --> Adapter : timeout or error
+    Adapter --> Handler : throw GifCatalogUnavailable
+    Handler --> Controller : 503 gif_catalog_unavailable
+  else provider ok
+    Giphy --> Adapter : 200 {data[], pagination}
+    Adapter -> Adapter : GiphyGifMapper::toDomain()
+    Adapter --> Handler : GifSearchResult (Gif[])
+    Handler --> Controller : GifSearchResult
+    Controller --> Kernel : 200 OK {data[], meta}
+  end
+end
+Kernel --> Client : response
+
+== after the response has been sent ==
+Kernel -> Audit : terminate(request, response)
+Audit -> DB : INSERT INTO service_interactions
+@enduml

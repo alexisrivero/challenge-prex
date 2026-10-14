@@ -1,0 +1,48 @@
+@startuml use-cases
+' ---------------------------------------------------------------------------
+' Challenge PHP Hexagonal - Use case diagram
+' ---------------------------------------------------------------------------
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "API client\n(unauthenticated)" as Guest
+actor "Authenticated user" as User
+actor "GIPHY" as Giphy <<external system>>
+actor "Audit trail" as Audit <<supporting system>>
+
+rectangle "GIFs API" {
+  usecase "UC1 - Login\n(email + password -> OAuth2 token, 30 min)" as UC1
+  usecase "UC2 - Search GIFs\n(query, limit?, offset?)" as UC2
+  usecase "UC3 - Get GIF by id" as UC3
+  usecase "UC4 - Save favorite GIF\n(gif_id, alias, user_id)" as UC4
+  usecase "UC5 - Record service interaction" as UC5
+}
+
+Guest --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+
+UC2 ..> Giphy : <<uses>>
+UC3 ..> Giphy : <<uses>>
+UC4 ..> UC3 : <<include>>\nthe gif must exist
+
+UC1 ..> UC5 : <<include>>
+UC2 ..> UC5 : <<include>>
+UC3 ..> UC5 : <<include>>
+UC4 ..> UC5 : <<include>>
+UC5 --> Audit
+
+note bottom of UC1
+  The issued token is required by
+  UC2, UC3 and UC4 (Authorization: Bearer).
+end note
+
+note right of UC4
+  A user can only save favorites
+  for themselves: user_id must match
+  the authenticated identity.
+end note
+@enduml

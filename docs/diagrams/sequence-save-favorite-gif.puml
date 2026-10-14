@@ -1,0 +1,62 @@
+@startuml sequence-save-favorite-gif
+' ---------------------------------------------------------------------------
+' UC4 - Save favorite GIF (POST /api/v1/gifs/favorites)
+' ---------------------------------------------------------------------------
+skinparam shadowing false
+autonumber
+
+actor "Authenticated client" as Client
+participant "Laravel kernel" as Kernel
+participant "RecordServiceInteraction\n<<middleware>>" as Audit
+participant "auth:api" as Guard
+participant "SaveFavoriteGifController" as Controller
+participant "SaveFavoriteGifHandler\n<<use case>>" as Handler
+participant "GifCatalog\n<<port>>" as Catalog
+participant "GIPHY API" as Giphy
+participant "FavoriteGifRepository\n<<port>>" as Repo
+participant "EloquentFavoriteGifRepository\n<<adapter>>" as Adapter
+database "MariaDB" as DB
+
+Client -> Kernel : POST /api/v1/gifs/favorites\n{gif_id, alias, user_id}
+Kernel -> Audit : handle()
+Audit -> Guard : authenticate bearer token
+Guard --> Controller : SaveFavoriteGifRequest (validated)
+Controller -> Controller : AuthenticatedUser::id()
+Controller -> Handler : handle(SaveFavoriteGifCommand)
+
+alt user_id != authenticated user
+  Handler --> Controller : throw CannotSaveFavoriteForAnotherUser
+  Controller --> Kernel : 403 favorite_user_mismatch
+else same user
+  Handler -> Catalog : findById(GifId)
+  Catalog -> Giphy : GET /v1/gifs/{id}
+  alt gif does not exist
+    Giphy --> Catalog : 404
+    Handler --> Controller : throw GifNotFound
+    Controller --> Kernel : 404 gif_not_found
+  else gif exists
+    Giphy --> Catalog : 200 {data}
+    Catalog --> Handler : Gif
+    Handler -> Repo : findByUserAndGif(UserId, GifId)
+    Repo -> Adapter : findByUserAndGif(...)
+    Adapter -> DB : SELECT ... FROM favorite_gifs
+    DB --> Handler : existing favorite?
+    alt already saved
+      Handler --> Controller : throw FavoriteGifAlreadySaved
+      Controller --> Kernel : 409 favorite_gif_already_saved
+    else first time
+      Handler -> Handler : FavoriteGif::save(...)\n(UUID + saved_at from Clock)
+      Handler -> Repo : save(FavoriteGif)
+      Repo -> Adapter : save(FavoriteGif)
+      Adapter -> DB : INSERT INTO favorite_gifs
+      Handler --> Controller : SaveFavoriteGifResponse
+      Controller --> Kernel : 201 Created {data}
+    end
+  end
+end
+Kernel --> Client : response
+
+== after the response has been sent ==
+Kernel -> Audit : terminate(request, response)
+Audit -> DB : INSERT INTO service_interactions
+@enduml

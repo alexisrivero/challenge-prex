@@ -1,0 +1,761 @@
+{
+  "info": {
+    "_postman_id": "6f1f0e40-5c0a-4e5e-9a1e-prex-challenge",
+    "name": "Prex - Challenge PHP Hexagonal (GIFs API)",
+    "description": "REST API built with Laravel 12 following Hexagonal Architecture + DDD.\n\n## How to use it\n1. Import this collection **and** `Prex-GIFs-API.postman_environment.json`.\n2. Select the *Prex - Local* environment (defaults to http://localhost:8080).\n3. Run **Auth > Login**: its test script stores `access_token` in the environment,\n   so every other request is authenticated automatically (collection level Bearer auth).\n4. Run **GIFs > Search GIFs**: it stores the first result in `gif_id`, used by the\n   *Get GIF by id* and *Save favorite GIF* requests.\n\nTip: `Run collection` executes the whole happy path plus the error cases in order.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Convenience: if there is no token yet (or it expired), log in first so any",
+          "// request can be executed on its own without running Login manually.",
+          "const expiresAt = pm.environment.get('token_expires_at');",
+          "const token = pm.environment.get('access_token');",
+          "const stillValid = token && expiresAt && (new Date(expiresAt).getTime() - Date.now() > 30000);",
+          "",
+          "if (stillValid || pm.info.requestName.startsWith('Login')) {",
+          "    return;",
+          "}",
+          "",
+          "pm.sendRequest({",
+          "    url: pm.environment.get('base_url') + '/api/v1/auth/login',",
+          "    method: 'POST',",
+          "    header: { 'Content-Type': 'application/json', 'Accept': 'application/json' },",
+          "    body: {",
+          "        mode: 'raw',",
+          "        raw: JSON.stringify({",
+          "            email: pm.environment.get('demo_email'),",
+          "            password: pm.environment.get('demo_password'),",
+          "        }),",
+          "    },",
+          "}, function (error, response) {",
+          "    if (error || response.code !== 200) {",
+          "        console.warn('Automatic login failed; run Auth > Login manually.');",
+          "        return;",
+          "    }",
+          "    const data = response.json().data;",
+          "    pm.environment.set('access_token', data.access_token);",
+          "    pm.environment.set('token_expires_at', data.expires_at);",
+          "    pm.environment.set('user_id', data.user.id);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "api_version",
+      "value": "v1",
+      "type": "string",
+      "description": "Documented for reference; the paths already include /api/v1."
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "UC1 - Login: exchanges credentials for an OAuth2 access token (30 min).",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// --- Automation required by the challenge -------------------------------",
+                  "// The token returned by the login service is stored in the environment so",
+                  "// every other request of the collection can use it automatically.",
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "const data = body.data;",
+                  "",
+                  "pm.test('The response carries an OAuth2 bearer token', function () {",
+                  "    pm.expect(data).to.have.property('access_token').that.is.a('string').and.not.empty;",
+                  "    pm.expect(data.token_type).to.eql('Bearer');",
+                  "});",
+                  "",
+                  "pm.test('The token expires in 30 minutes', function () {",
+                  "    pm.expect(data.expires_in).to.eql(1800);",
+                  "});",
+                  "",
+                  "pm.environment.set('access_token', data.access_token);",
+                  "pm.environment.set('token_type', data.token_type);",
+                  "pm.environment.set('token_expires_at', data.expires_at);",
+                  "pm.environment.set('user_id', data.user.id);",
+                  "",
+                  "console.log('Access token stored in the environment, expires at ' + data.expires_at);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{demo_email}}\",\n    \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Input: email | password.\nOutput: token with a 30 minute expiration."
+          }
+        },
+        {
+          "name": "Login - invalid credentials (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('It does not reveal whether the email exists', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('invalid_credentials');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{demo_email}}\",\n    \"password\": \"wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Login - validation error (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('It details the invalid fields', function () {",
+                  "    const error = pm.response.json().error;",
+                  "    pm.expect(error.code).to.eql('validation_failed');",
+                  "    pm.expect(error.errors).to.have.property('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"not-an-email\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "OAuth2 token (password grant, standard endpoint)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Optional: the canonical OAuth2 endpoint exposed by Passport.",
+                  "// Requires OAUTH_ENABLE_PASSWORD_GRANT=true and the client id created",
+                  "// by `php artisan oauth:ensure-clients` (see oauth_client_id).",
+                  "if (pm.response.code === 200) {",
+                  "    pm.environment.set('access_token', pm.response.json().access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"grant_type\": \"password\",\n    \"client_id\": \"{{oauth_client_id}}\",\n    \"username\": \"{{demo_email}}\",\n    \"password\": \"{{demo_password}}\",\n    \"scope\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/oauth/token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "description": "The project keeps the standard OAuth2 password grant available.\nGet the client id with: `docker compose exec app php artisan oauth:ensure-clients`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "GIFs",
+      "description": "UC2, UC3 and UC4. All of them require the bearer token.",
+      "item": [
+        {
+          "name": "Search GIFs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('It returns a collection with pagination metadata', function () {",
+                  "    pm.expect(body.data).to.be.an('array');",
+                  "    pm.expect(body.meta).to.have.property('total_count');",
+                  "    pm.expect(body.meta).to.have.property('limit');",
+                  "    pm.expect(body.meta).to.have.property('offset');",
+                  "});",
+                  "",
+                  "if (body.data.length > 0) {",
+                  "    pm.environment.set('gif_id', body.data[0].id);",
+                  "    console.log('gif_id stored: ' + body.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/gifs?query=funny cat&limit=5&offset=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "gifs"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "funny cat",
+                  "description": "required|string"
+                },
+                {
+                  "key": "limit",
+                  "value": "5",
+                  "description": "optional|numeric (1-50)"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "optional|numeric (0-4999)"
+                }
+              ]
+            },
+            "description": "UC2 - Search gifs by phrase or term."
+          }
+        },
+        {
+          "name": "Get GIF by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('It returns the requested resource', function () {",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data.id).to.eql(pm.environment.get('gif_id'));",
+                  "    pm.expect(data).to.have.property('title');",
+                  "    pm.expect(data).to.have.property('images');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/gifs/{{gif_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "gifs",
+                "{{gif_id}}"
+              ]
+            },
+            "description": "UC3 - Get the information of one specific gif. Run *Search GIFs* first to populate `gif_id`."
+          }
+        },
+        {
+          "name": "Get GIF by id - not found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('It reports the domain error code', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('gif_not_found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/gifs/thisGifDoesNotExist",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "gifs",
+                "thisGifDoesNotExist"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Save favorite GIF",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const data = pm.response.json().data;",
+                  "",
+                  "pm.test('The favorite belongs to the authenticated user', function () {",
+                  "    pm.expect(data.user_id).to.eql(Number(pm.environment.get('user_id')));",
+                  "    pm.expect(data.gif_id).to.eql(pm.environment.get('gif_id'));",
+                  "});",
+                  "",
+                  "pm.environment.set('favorite_id', data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"gif_id\": \"{{gif_id}}\",\n    \"alias\": \"my favourite gif\",\n    \"user_id\": \"{{user_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/gifs/favorites",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "gifs",
+                "favorites"
+              ]
+            },
+            "description": "UC4 - Save a gif as favorite.\n\nInput: GIF_ID (required), ALIAS (required), USER_ID (required).\n`user_id` must match the authenticated user, otherwise the API answers 403."
+          }
+        },
+        {
+          "name": "Save favorite GIF - duplicated (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('The same gif cannot be saved twice', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('favorite_gif_already_saved');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"gif_id\": \"{{gif_id}}\",\n    \"alias\": \"my favourite gif\",\n    \"user_id\": \"{{user_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/gifs/favorites",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "gifs",
+                "favorites"
+              ]
+            },
+            "description": "Run it right after *Save favorite GIF* to see the conflict rule in action."
+          }
+        },
+        {
+          "name": "Save favorite GIF - another user (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 403 Forbidden', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test('A user cannot write in somebody else collection', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('favorite_user_mismatch');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"gif_id\": \"{{gif_id}}\",\n    \"alias\": \"not mine\",\n    \"user_id\": 999999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/gifs/favorites",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "gifs",
+                "favorites"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search GIFs - without token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('The services require authentication', function () {",
+                  "    pm.expect(pm.response.json().error.code).to.eql('unauthenticated');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/gifs?query=funny cat",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "gifs"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "funny cat"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "API index",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('The application is up', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/up",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "up"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

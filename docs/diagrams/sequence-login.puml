@@ -1,0 +1,56 @@
+@startuml sequence-login
+' ---------------------------------------------------------------------------
+' UC1 - Login (POST /api/v1/auth/login)
+' ---------------------------------------------------------------------------
+skinparam shadowing false
+autonumber
+
+actor Client
+participant "nginx + Laravel" as Kernel
+participant "RecordServiceInteraction\n<<middleware>>" as Audit
+participant "LoginController\n<<primary adapter>>" as Controller
+participant "LoginHandler\n<<use case>>" as Handler
+participant "UserRepository\n<<port>>" as UserPort
+participant "EloquentUserRepository\n<<adapter>>" as UserAdapter
+database "MariaDB" as DB
+participant "PasswordHasher\n<<port>>" as HasherPort
+participant "AccessTokenIssuer\n<<port>>" as TokenPort
+participant "Passport\n(OAuth2 server)" as Passport
+
+Client -> Kernel : POST /api/v1/auth/login\n{email, password}
+Kernel -> Audit : handle()
+Audit -> Controller : LoginRequest (validated)
+Controller -> Handler : handle(LoginCommand)
+
+Handler -> UserPort : findByEmail(Email)
+UserPort -> UserAdapter : findByEmail(Email)
+UserAdapter -> DB : SELECT * FROM users WHERE email = ?
+DB --> UserAdapter : row
+UserAdapter --> Handler : User (domain entity)
+
+alt user not found
+  Handler --> Controller : throw InvalidCredentials
+else user found
+  Handler -> HasherPort : matches(PlainPassword, HashedPassword)
+  HasherPort --> Handler : false
+  alt password mismatch
+    Handler --> Controller : throw InvalidCredentials
+  else password ok
+    Handler -> TokenPort : issueFor(User)
+    TokenPort -> Passport : createToken(name, scopes)
+    Passport -> DB : INSERT INTO oauth_access_tokens
+    Passport --> TokenPort : JWT + expires_in (1800s)
+    TokenPort --> Handler : AccessToken
+    Handler --> Controller : LoginResponse
+  end
+end
+
+Controller -> Controller : RequestUserContext::rememberUser(id)
+Controller --> Kernel : 200 OK / 401 Unauthorized\n{access_token, token_type, expires_in, user}
+Kernel --> Client : response
+
+== after the response has been sent ==
+Kernel -> Audit : terminate(request, response)
+Audit -> Audit : RecordServiceInteractionHandler\n(password redacted)
+Audit -> DB : INSERT INTO service_interactions
+@enduml

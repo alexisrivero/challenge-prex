@@ -1,0 +1,44 @@
+@startuml sequence-find-gif
+' ---------------------------------------------------------------------------
+' UC3 - Get GIF by id (GET /api/v1/gifs/{id})
+' ---------------------------------------------------------------------------
+skinparam shadowing false
+autonumber
+
+actor "Authenticated client" as Client
+participant "Laravel kernel" as Kernel
+participant "RecordServiceInteraction\n<<middleware>>" as Audit
+participant "auth:api" as Guard
+participant "FindGifController" as Controller
+participant "FindGifHandler\n<<use case>>" as Handler
+participant "GifCatalog\n<<port>>" as Port
+participant "GiphyGifCatalog\n<<adapter>>" as Adapter
+participant "GIPHY API" as Giphy
+database "MariaDB" as DB
+
+Client -> Kernel : GET /api/v1/gifs/3oEjI6SIIHBdRxXI40\nAuthorization: Bearer <jwt>
+Kernel -> Audit : handle()
+Audit -> Guard : authenticate bearer token
+Guard --> Controller : request
+Controller -> Handler : handle(FindGifQuery)
+Handler -> Handler : GifId::fromString()\n(422 if malformed)
+Handler -> Port : findById(GifId)
+Port -> Adapter : findById(GifId)
+Adapter -> Giphy : GET /v1/gifs/{id}?api_key
+alt 404 or empty payload
+  Giphy --> Adapter : 404 Not Found
+  Adapter --> Handler : throw GifNotFound
+  Handler --> Controller : 404 gif_not_found
+else found
+  Giphy --> Adapter : 200 {data}
+  Adapter -> Adapter : GiphyGifMapper::toDomain()
+  Adapter --> Handler : Gif
+  Handler --> Controller : Gif
+  Controller --> Kernel : 200 OK {data}
+end
+Kernel --> Client : response
+
+== after the response has been sent ==
+Kernel -> Audit : terminate(request, response)
+Audit -> DB : INSERT INTO service_interactions
+@enduml

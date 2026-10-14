@@ -1,0 +1,90 @@
+@startuml der
+' ---------------------------------------------------------------------------
+' Challenge PHP Hexagonal - Data model (DER)
+' ---------------------------------------------------------------------------
+hide circle
+skinparam shadowing false
+skinparam linetype ortho
+
+entity "users" as users {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * name : VARCHAR(255)
+  * email : VARCHAR(255) <<unique>>
+  * password : VARCHAR(255)
+  email_verified_at : TIMESTAMP
+  remember_token : VARCHAR(100)
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "favorite_gifs" as favorites {
+  * id : CHAR(36) <<PK>> <<uuid>>
+  --
+  * user_id : BIGINT UNSIGNED <<FK users.id>>
+  * gif_id : VARCHAR(64)
+  * alias : VARCHAR(100)
+  * saved_at : TIMESTAMP
+  --
+  unique (user_id, gif_id)
+  index (user_id, saved_at)
+}
+
+entity "service_interactions" as interactions {
+  * id : CHAR(36) <<PK>> <<uuid>>
+  --
+  user_id : BIGINT UNSIGNED <<FK users.id>> <<nullable>>
+  * http_method : VARCHAR(10)
+  * path : VARCHAR(255)
+  service_name : VARCHAR(255)
+  * request_body : JSON
+  * response_status : SMALLINT UNSIGNED
+  * response_body : JSON
+  * ip_address : VARCHAR(45)
+  * occurred_at : TIMESTAMP
+  --
+  index (user_id, occurred_at)
+  index (service_name), index (response_status)
+}
+
+entity "oauth_clients" as clients {
+  * id : CHAR(36) <<PK>> <<uuid>>
+  --
+  name : VARCHAR(255)
+  secret : VARCHAR(255) <<nullable>>
+  provider : VARCHAR(255) <<nullable>>
+  * redirect_uris : TEXT
+  * grant_types : TEXT
+  * revoked : BOOLEAN
+}
+
+entity "oauth_access_tokens" as tokens {
+  * id : VARCHAR(100) <<PK>>
+  --
+  user_id : BIGINT UNSIGNED <<FK users.id>> <<nullable>>
+  * client_id : CHAR(36) <<FK oauth_clients.id>>
+  name : VARCHAR(255)
+  scopes : TEXT
+  * revoked : BOOLEAN
+  expires_at : DATETIME
+}
+
+entity "oauth_refresh_tokens" as refresh {
+  * id : VARCHAR(100) <<PK>>
+  --
+  * access_token_id : VARCHAR(100) <<FK>>
+  * revoked : BOOLEAN
+  expires_at : DATETIME
+}
+
+users ||--o{ favorites : "saves"
+users ||--o{ interactions : "performs"
+users ||--o{ tokens : "owns"
+clients ||--o{ tokens : "issues"
+tokens ||--o| refresh : "can be renewed by"
+
+note bottom of favorites
+  gif_id is the GIPHY identifier: the catalog
+  is external, so no local "gifs" table exists.
+end note
+@enduml

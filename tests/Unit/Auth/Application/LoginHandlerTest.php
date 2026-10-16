@@ -123,4 +123,20 @@ final class LoginHandlerTest extends TestCase
 
         $this->handler->handle(new LoginCommand('not-an-email', 's3cret-pass'));
     }
+
+    /**
+     * Regression: an unknown email returned without hashing anything, so it
+     * answered in ~12ms against ~220ms for a registered one - enough to
+     * enumerate accounts by timing alone.
+     */
+    #[Test]
+    public function an_unknown_email_costs_a_verification_too(): void
+    {
+        try {
+            $this->handler->handle(new LoginCommand('nobody@prex.local', 's3cret-pass'));
+            self::fail('Expected InvalidCredentials.');
+        } catch (InvalidCredentials) {
+            self::assertSame(1, $this->hasher->decoyVerifications());
+        }
+    }
 }

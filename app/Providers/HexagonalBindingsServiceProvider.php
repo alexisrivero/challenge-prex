@@ -59,9 +59,11 @@ final class HexagonalBindingsServiceProvider extends ServiceProvider
             )
         );
 
-        // Request scoped: shared between the primary adapters and the
-        // terminable middleware that writes the audit trail.
-        $this->app->singleton(RequestUserContext::class);
+        // Request scoped - not a singleton: under a long lived worker
+        // (Octane) the identity of one request would leak into the audit row
+        // of the next one, and an anonymous call would be attributed to
+        // whoever happened to log in before it.
+        $this->app->scoped(RequestUserContext::class);
 
         $this->app->singleton(
             ApiExceptionRenderer::class,

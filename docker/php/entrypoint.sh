@@ -19,6 +19,11 @@ fi
 
 if [ -z "${APP_KEY:-}" ]; then
     if ! grep -qE '^APP_KEY=.+' .env; then
+        # key:generate only rewrites an APP_KEY line that already exists: with a
+        # hand written .env that has none it prints an error, exits 0 and leaves
+        # the app without a key. Make sure there is a line for it to rewrite.
+        grep -qE '^APP_KEY=' .env || printf '\nAPP_KEY=\n' >> .env
+
         log 'Generating the application key'
         php artisan key:generate --force --no-interaction
     fi
@@ -28,14 +33,26 @@ if [ -z "${APP_KEY:-}" ]; then
     # variables. Exporting it keeps both sources in sync for php-fpm.
     APP_KEY="$(grep -E '^APP_KEY=' .env | head -n1 | cut -d'=' -f2-)"
     export APP_KEY
+
+    if [ -z "${APP_KEY}" ]; then
+        log 'The application key is still empty, refusing to start a broken app.'
+        exit 1
+    fi
 fi
 
 # ---------------------------------------------------------------------------
 # Dependencies (useful when the source is bind mounted over the image)
 # ---------------------------------------------------------------------------
-if [ ! -f vendor/autoload.php ]; then
+# `vendor` lives in a named volume, which is populated from the image only the
+# first time: a later image rebuild would leave the container running the
+# dependencies of whoever created the volume. The stamp makes the lock file,
+# not the volume, decide when to install.
+lock_stamp='vendor/.composer-lock.sha'
+
+if [ ! -f vendor/autoload.php ] || [ "$(cat "${lock_stamp}" 2>/dev/null || true)" != "$(sha256sum composer.lock | cut -d' ' -f1)" ]; then
     log 'Installing composer dependencies'
     composer install --prefer-dist --no-progress --no-interaction
+    sha256sum composer.lock | cut -d' ' -f1 > "${lock_stamp}"
 fi
 
 # ---------------------------------------------------------------------------

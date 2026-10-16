@@ -80,10 +80,11 @@ final class RecordServiceInteraction
      */
     private function requestPayload(Request $request): array
     {
+        // A JSON request keeps its body in the json bag and a form request in
+        // the post bag; merging all three only duplicated the body.
         return [
             ...$request->query->all(),
-            ...$request->post(),
-            ...($request->isJson() ? (array) $request->json()->all() : []),
+            ...($request->isJson() ? (array) $request->json()->all() : $request->post()),
         ];
     }
 

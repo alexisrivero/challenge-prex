@@ -107,10 +107,13 @@ final readonly class ApiExceptionRenderer
             ->withHeaders($exception->getHeaders());
     }
 
+    /**
+     * No report() here: this runs inside the render pipeline, and the handler
+     * has already reported the exception. Calling it again logged every 500
+     * twice, with two full stack traces.
+     */
     private function unexpected(Throwable $exception): JsonResponse
     {
-        report($exception);
-
         return $this->response(
             'internal_server_error',
             $this->debug ? $exception->getMessage() : 'An unexpected error occurred.',

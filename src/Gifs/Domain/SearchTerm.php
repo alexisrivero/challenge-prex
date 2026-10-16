@@ -8,7 +8,11 @@ use Prex\Gifs\Domain\Exception\InvalidSearchTerm;
 
 final readonly class SearchTerm
 {
-    public const int MAX_LENGTH = 255;
+    /**
+     * GIPHY answers 414 beyond this, so accepting more would turn a perfectly
+     * valid looking request into a 503. Measured against the live API.
+     */
+    public const int MAX_LENGTH = 50;
 
     private function __construct(public string $value) {}
 

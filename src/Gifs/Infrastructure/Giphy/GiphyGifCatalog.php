@@ -30,6 +30,11 @@ use Throwable;
  */
 final readonly class GiphyGifCatalog implements GifCatalog
 {
+    /**
+     * Statuses with which GIPHY says "that id leads nowhere".
+     */
+    private const array UNUSABLE_ID_STATUSES = [400, 404, 414, 422];
+
     public function __construct(
         private HttpClient $http,
         private GiphyGifMapper $mapper,
@@ -73,7 +78,11 @@ final readonly class GiphyGifCatalog implements GifCatalog
     {
         $response = $this->get('/gifs/'.urlencode($id->value));
 
-        if ($response->status() === 404) {
+        // GIPHY answers 400 for an id it considers malformed and 414 for an
+        // absurdly long one. From the caller's point of view all of these mean
+        // the same thing: there is no such gif. A 401/403/429 is about us and
+        // not about the id, so those keep bubbling up as "unavailable".
+        if (in_array($response->status(), self::UNUSABLE_ID_STATUSES, true)) {
             throw GifNotFound::withId($id);
         }
 
@@ -118,7 +127,11 @@ final readonly class GiphyGifCatalog implements GifCatalog
         } catch (RequestException $exception) {
             throw GifCatalogUnavailable::because('the provider returned an error response', $exception);
         } catch (Throwable $exception) {
-            throw GifCatalogUnavailable::because($exception->getMessage(), $exception);
+            // Deliberately not $exception->getMessage(): a transport error
+            // carries the full request URL, `api_key` included, and this
+            // message travels to the client and into the audit trail. The
+            // original stays as `previous`, for the logs only.
+            throw GifCatalogUnavailable::because('the request to the provider failed', $exception);
         }
 
         return $response;

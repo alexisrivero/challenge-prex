@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Laravel\Passport\Passport;
 use PHPUnit\Framework\Attributes\Test;
+use RuntimeException;
 use Tests\Concerns\FakesGiphy;
 use Tests\Concerns\InteractsWithOAuth;
 use Tests\TestCase;
@@ -73,5 +74,42 @@ final class FindGifTest extends TestCase
         $this->app['auth']->forgetGuards();
 
         $this->getJson('/api/v1/gifs/3oEjI6SIIHBdRxXI40')->assertUnauthorized();
+    }
+
+    /**
+     * Regression: GIPHY answers 400 for an id it considers malformed, and we
+     * turned that into a 503 "catalog unavailable" for an id the client could
+     * do nothing about.
+     */
+    #[Test]
+    public function an_id_the_provider_rejects_is_reported_as_not_found(): void
+    {
+        Http::fake(['*' => Http::response(['meta' => ['status' => 400]], 400)]);
+
+        $this->getJson('/api/v1/gifs/a-b_c')
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'gif_not_found');
+    }
+
+    /**
+     * Regression: the catch-all branch copied the transport error message into
+     * the response and into the audit trail, and a transport message carries
+     * the full request URL, `api_key` included.
+     */
+    #[Test]
+    public function a_transport_failure_never_leaks_the_api_key(): void
+    {
+        $key = 'super-secret-giphy-key';
+
+        Http::fake(function () use ($key): never {
+            throw new RuntimeException(
+                'cURL error 35: SSL connect error for https://api.giphy.com/v1/gifs/gif-1?api_key='.$key
+            );
+        });
+
+        $response = $this->getJson('/api/v1/gifs/gif-1')->assertStatus(503);
+
+        self::assertStringNotContainsString($key, $response->getContent() ?: '');
+        self::assertStringNotContainsString('api_key', $response->getContent() ?: '');
     }
 }

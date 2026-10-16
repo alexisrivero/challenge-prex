@@ -163,7 +163,7 @@ Content-Type: application/json
 
 ### 3.2 Buscar GIFS
 
-**Entrada (filtros):** `query` requerido|cadena · `limit` opcional|numérico (1–50, default 25) · `offset` opcional|numérico (0–4999, default 0).
+**Entrada (filtros):** `query` requerido|cadena (hasta 50 caracteres, que es el máximo que acepta GIPHY: más largo responde `414`) · `limit` opcional|numérico (1–50, default 25) · `offset` opcional|numérico (0–4999, default 0).
 **Salida:** colección con resultados de búsqueda + metadata de paginación.
 
 ```http
@@ -601,17 +601,28 @@ Resultado esperado: **25 assertions, 0 fallos**.
 5. **Identidades generadas por el dominio.** `favorite_gifs` y `service_interactions` usan UUID v4 creados en el
    dominio (`FavoriteGifId::generate()`), no autoincrementales: el agregado está completo antes de persistirse y
    los casos de uso se testean sin base de datos.
-6. **`503` para fallas de GIPHY.** Una caída del proveedor se traduce a `503 Service Unavailable`
-   (`gif_catalog_unavailable`), con reintentos sólo ante fallas transitorias (timeout, 5xx, 429), nunca ante
-   `404`/`401`.
-7. **Login no revela si el email existe**: email inexistente y password incorrecto devuelven el mismo
-   `401 invalid_credentials`.
+6. **`503` para fallas de GIPHY, `404` para ids que no llevan a ningún lado.** Una caída del proveedor se
+   traduce a `503 Service Unavailable` (`gif_catalog_unavailable`), con reintentos sólo ante fallas transitorias
+   (timeout, 5xx, 429), nunca ante `404`/`401`. En cambio un `400`/`404`/`414`/`422` del proveedor *sobre un id*
+   es un `404 gif_not_found`: el cliente no puede hacer nada con un "servicio no disponible" que en realidad
+   significa "ese id no existe". El mensaje de un error de transporte nunca se reenvía tal cual, porque lleva la
+   URL completa de la petición con la `api_key` adentro.
+7. **Login no revela si el email existe**, ni por la respuesta ni por el tiempo: email inexistente y password
+   incorrecto devuelven el mismo `401 invalid_credentials`, y la rama del email inexistente gasta una
+   verificación igual (`PasswordHasher::verifyDecoy`) para no responder diez veces más rápido.
 8. **El shared kernel aloja `UserId`** porque tres contextos necesitan referenciar al usuario; `Gifs` y `Audit`
    nunca dependen de `Auth`.
 9. **El token se emite con el `personal_access` grant** de Passport en el servicio de login (para poder recibir
    `email`/`password` tal como pide la consigna y responder con un payload propio), manteniendo además el
    endpoint OAuth2 estándar `/oauth/token`.
 10. **Sin frontend**: se quitaron Vite/npm del skeleton de Laravel; el proyecto es sólo API.
+11. **La auditoría es inesquivable.** `Payload` garantiza UTF-8 válido al construirse: sin eso, una petición con
+    bytes inválidos (`?query=%FF`) hacía fallar el encoding de la fila, el middleware se tragaba el error para no
+    romper la respuesta, y la interacción terminaba sin registrarse. Persistir *toda* interacción es un requisito
+    de la consigna, así que la validez del payload es un invariante del dominio, no un detalle del adaptador.
+12. **El índice único es la única autoridad sobre duplicados.** "Leer y después insertar" no puede ser atómico:
+    dos peticiones concurrentes pasan las dos el chequeo previo y una choca contra `(user_id, gif_id)`. El
+    repositorio traduce esa violación a `409`, así que la carrera responde lo mismo que el camino secuencial.
 
 ---
 

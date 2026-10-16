@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Prex\Gifs\Infrastructure\Persistence\Eloquent;
 
+use Illuminate\Database\UniqueConstraintViolationException;
+use Prex\Gifs\Domain\Favorite\Exception\FavoriteGifAlreadySaved;
 use Prex\Gifs\Domain\Favorite\FavoriteGif;
 use Prex\Gifs\Domain\Favorite\FavoriteGifRepository;
 use Prex\Gifs\Domain\GifId;
@@ -13,12 +15,19 @@ final readonly class EloquentFavoriteGifRepository implements FavoriteGifReposit
 {
     public function __construct(private FavoriteGifMapper $mapper) {}
 
+    /**
+     * The `(user_id, gif_id)` unique index is the only authority on duplicates:
+     * checking before inserting cannot be atomic, so two concurrent requests
+     * both pass the check and one of them hits the index. Translating the
+     * violation here keeps that race answering `409` instead of `500`.
+     */
     public function save(FavoriteGif $favorite): void
     {
-        FavoriteGifModel::query()->updateOrCreate(
-            ['id' => $favorite->id->value],
-            $this->mapper->toAttributes($favorite),
-        );
+        try {
+            FavoriteGifModel::query()->create($this->mapper->toAttributes($favorite));
+        } catch (UniqueConstraintViolationException) {
+            throw FavoriteGifAlreadySaved::create($favorite->userId, $favorite->gifId);
+        }
     }
 
     public function findByUserAndGif(UserId $userId, GifId $gifId): ?FavoriteGif

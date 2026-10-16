@@ -7,11 +7,13 @@ namespace Prex\Audit\Domain;
 /**
  * Body of a request or a response, ready to be audited.
  *
- * Two domain rules live here, because they are policies about *what we are
+ * Three domain rules live here, because they are policies about *what we are
  * allowed to store*, not technical details:
  *  - secrets are never persisted in clear text ({@see redacting()});
  *  - a payload is capped in size so a huge response cannot flood the audit
- *    trail ({@see truncated()}).
+ *    trail ({@see truncated()});
+ *  - a payload is always valid UTF-8, so that nothing a client sends can make
+ *    it unstorable and thus escape the audit trail.
  */
 final readonly class Payload
 {
@@ -20,9 +22,25 @@ final readonly class Payload
     public const string TRUNCATED_KEY = '_truncated';
 
     /**
+     * U+FFFD REPLACEMENT CHARACTER, written over every byte sequence that is
+     * not valid UTF-8.
+     */
+    private const int SUBSTITUTE = 0xFFFD;
+
+    /** @var array<array-key, mixed> */
+    public array $data;
+
+    /**
      * @param  array<array-key, mixed>  $data
      */
-    private function __construct(public array $data) {}
+    private function __construct(array $data)
+    {
+        // Enforced here, once, so every instance is storable by construction:
+        // a request carrying invalid UTF-8 (`?query=%FF`) would otherwise make
+        // the JSON encoding of the audit row fail, and the interaction would
+        // never be persisted.
+        $this->data = self::intoValidUtf8($data);
+    }
 
     /**
      * @param  array<array-key, mixed>  $data
@@ -115,7 +133,9 @@ final readonly class Payload
         return new self([
             self::TRUNCATED_KEY => true,
             'bytes' => strlen($encoded),
-            'preview' => substr($encoded, 0, $maxBytes),
+            // mb_strcut, not substr: cutting in the middle of a multibyte
+            // character would produce a preview that cannot be encoded.
+            'preview' => mb_strcut($encoded, 0, $maxBytes, 'UTF-8'),
         ]);
     }
 
@@ -130,6 +150,45 @@ final readonly class Payload
     public function toArray(): array
     {
         return $this->data;
+    }
+
+    /**
+     * Recursively replaces invalid UTF-8 in both keys and values.
+     *
+     * @param  array<array-key, mixed>  $data
+     * @return array<array-key, mixed>
+     */
+    private static function intoValidUtf8(array $data): array
+    {
+        $result = [];
+
+        foreach ($data as $key => $value) {
+            $key = is_string($key) ? self::stringIntoValidUtf8($key) : $key;
+
+            $result[$key] = match (true) {
+                is_array($value) => self::intoValidUtf8($value),
+                is_string($value) => self::stringIntoValidUtf8($value),
+                default => $value,
+            };
+        }
+
+        return $result;
+    }
+
+    private static function stringIntoValidUtf8(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        $previous = mb_substitute_character();
+        mb_substitute_character(self::SUBSTITUTE);
+
+        try {
+            return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        } finally {
+            mb_substitute_character($previous);
+        }
     }
 
     public function toJson(): string

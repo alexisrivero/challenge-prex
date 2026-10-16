@@ -20,9 +20,13 @@ final class SaveFavoriteGifRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'gif_id' => ['required', 'string', 'max:'.GifId::MAX_LENGTH, 'regex:/^[A-Za-z0-9_-]+$/'],
+            // /D so that `$` does not match before a trailing newline, which
+            // would let "abc\n" through as a valid id.
+            'gif_id' => ['required', 'string', 'max:'.GifId::MAX_LENGTH, 'regex:/^[A-Za-z0-9_-]+$/D'],
             'alias' => ['required', 'string', 'max:'.Alias::MAX_LENGTH],
-            'user_id' => ['required', 'integer', 'min:1'],
+            // `integer` alone accepts true and casts it to 1; `numeric` is what
+            // rejects booleans.
+            'user_id' => ['required', 'numeric', 'integer', 'min:1'],
         ];
     }
 

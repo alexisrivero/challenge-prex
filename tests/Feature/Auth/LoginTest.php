@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use PHPUnit\Framework\Attributes\Test;
 use Prex\Audit\Domain\Payload;
 use Prex\Audit\Infrastructure\Persistence\Eloquent\ServiceInteractionModel;
@@ -150,5 +151,22 @@ final class LoginTest extends TestCase
 
         self::assertNull($interaction->user_id);
         self::assertSame(401, $interaction->response_status);
+    }
+
+    /**
+     * Regression: every domain exception was reported, so each failed login
+     * left an ERROR with a full stack trace and buried the real failures.
+     */
+    #[Test]
+    public function a_rejected_login_is_not_logged_as_an_incident(): void
+    {
+        Log::spy();
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'demo@prex.local',
+            'password' => 'not-the-password',
+        ])->assertUnauthorized();
+
+        Log::shouldNotHaveReceived('error');
     }
 }

@@ -26,4 +26,13 @@ final readonly class LaravelPasswordHasher implements PasswordHasher
     {
         return $this->hasher->check($password->value(), $hashedPassword->value());
     }
+
+    /**
+     * Hashing costs what verifying costs, and it needs no decoy hash pinned to
+     * one algorithm: whatever driver is configured, the work matches.
+     */
+    public function verifyDecoy(PlainPassword $password): void
+    {
+        $this->hasher->make($password->value());
+    }
 }

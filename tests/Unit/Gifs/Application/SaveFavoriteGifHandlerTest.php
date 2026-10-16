@@ -110,4 +110,31 @@ final class SaveFavoriteGifHandlerTest extends TestCase
 
         $this->handler->handle(new SaveFavoriteGifCommand('gif-1', '   ', 7, 7));
     }
+
+    /**
+     * Regression: the catalog was queried before the duplicate check, so a
+     * repeated favorite burned GIPHY quota and answered 503 instead of 409
+     * whenever the provider was down.
+     */
+    #[Test]
+    public function a_duplicate_is_rejected_without_asking_the_catalog(): void
+    {
+        $command = new SaveFavoriteGifCommand(
+            gifId: 'gif-1',
+            alias: 'my cat',
+            userId: 7,
+            authenticatedUserId: 7,
+        );
+
+        $this->handler->handle($command);
+        $callsAfterTheFirstSave = $this->catalog->findByIdCalls;
+
+        $this->expectException(FavoriteGifAlreadySaved::class);
+
+        try {
+            $this->handler->handle($command);
+        } finally {
+            self::assertSame($callsAfterTheFirstSave, $this->catalog->findByIdCalls);
+        }
+    }
 }

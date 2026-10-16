@@ -79,4 +79,28 @@ final class PayloadTest extends TestCase
 
         self::assertSame(['query' => 'cats'], $payload->toArray());
     }
+
+    /**
+     * Regression: a request with invalid UTF-8 (`?query=%FF`) used to make the
+     * JSON encoding of the audit row fail, so the interaction was silently
+     * never persisted and the caller escaped the audit trail.
+     */
+    #[Test]
+    public function a_payload_with_invalid_utf8_is_still_storable(): void
+    {
+        $payload = Payload::fromArray(["query\xFF" => "caf\xE9"]);
+
+        self::assertNotFalse(
+            json_encode($payload->toArray()),
+            'an audit row that cannot be encoded is an audit row that never gets written'
+        );
+    }
+
+    #[Test]
+    public function truncating_never_splits_a_multibyte_character(): void
+    {
+        $payload = Payload::fromArray(['body' => str_repeat('é', 100)])->truncated(50);
+
+        self::assertNotFalse(json_encode($payload->toArray()));
+    }
 }

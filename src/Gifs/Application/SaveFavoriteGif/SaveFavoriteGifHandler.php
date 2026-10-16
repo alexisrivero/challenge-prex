@@ -19,8 +19,13 @@ use Prex\Shared\Domain\ValueObject\UserId;
  *
  * Rules applied, in order:
  *  1. a user may only write in their own collection;
- *  2. the gif must exist in the catalog (no dangling favorites);
- *  3. the same gif cannot be saved twice by the same user.
+ *  2. the same gif cannot be saved twice by the same user;
+ *  3. the gif must exist in the catalog (no dangling favorites).
+ *
+ * The order matters: rules 1 and 2 are answered with what we already own, so a
+ * duplicate never spends GIPHY quota and keeps answering `409` while the
+ * catalog is down. Rule 2 is also enforced by the repository, which is the one
+ * that sees the unique index and therefore the only atomic check.
  */
 final readonly class SaveFavoriteGifHandler
 {
@@ -42,11 +47,11 @@ final readonly class SaveFavoriteGifHandler
         $gifId = GifId::fromString($command->gifId);
         $alias = Alias::fromString($command->alias);
 
-        $gif = $this->catalog->findById($gifId);
-
         if ($this->favorites->findByUserAndGif($userId, $gifId) !== null) {
             throw FavoriteGifAlreadySaved::create($userId, $gifId);
         }
+
+        $gif = $this->catalog->findById($gifId);
 
         $favorite = FavoriteGif::save($userId, $gifId, $alias, $this->clock->now());
 

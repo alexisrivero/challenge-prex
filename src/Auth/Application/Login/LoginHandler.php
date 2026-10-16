@@ -33,6 +33,10 @@ final readonly class LoginHandler
         $user = $this->users->findByEmail(Email::fromString($command->email));
 
         if ($user === null) {
+            // Same work as the branch below, so that "unknown email" and
+            // "wrong password" are indistinguishable from the outside.
+            $this->passwordHasher->verifyDecoy(PlainPassword::fromString($command->password));
+
             throw InvalidCredentials::create();
         }
 

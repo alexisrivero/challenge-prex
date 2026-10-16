@@ -16,7 +16,10 @@ final readonly class IpAddress
     {
         $value = trim((string) $value);
 
-        if ($value === '') {
+        // Also accepts what this class itself writes when the origin is
+        // missing, otherwise reading the audit trail back blows up on the very
+        // rows we stored.
+        if ($value === '' || $value === self::UNKNOWN) {
             return new self(self::UNKNOWN);
         }
 

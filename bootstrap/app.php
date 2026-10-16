@@ -8,6 +8,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Prex\Audit\Infrastructure\Http\Middleware\RecordServiceInteraction;
 use Prex\Auth\Infrastructure\Console\EnsureOAuthClientsCommand;
+use Prex\Shared\Domain\Exception\DomainException;
 use Prex\Shared\Infrastructure\Http\Exception\ApiExceptionRenderer;
 use Prex\Shared\Infrastructure\Http\Middleware\ForceJsonResponse;
 
@@ -31,6 +32,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // A domain exception is a deliberate answer to the client (401, 403,
+        // 404, 409, 422), not an incident: logging each one as ERROR with a
+        // stack trace buried the real failures under failed logins.
+        $exceptions->dontReport([DomainException::class]);
+
         $exceptions->render(
             fn (Throwable $exception, Request $request) => app(ApiExceptionRenderer::class)
                 ->render($exception, $request)

@@ -34,4 +34,16 @@ final class IpAddressTest extends TestCase
 
         IpAddress::fromString('not-an-ip');
     }
+
+    /**
+     * Regression: `unknown` was written for a missing origin but rejected when
+     * read again, so listing the audit trail of that user blew up.
+     */
+    #[Test]
+    public function the_unknown_marker_can_be_read_back(): void
+    {
+        $stored = IpAddress::fromString(null)->value;
+
+        self::assertSame(IpAddress::UNKNOWN, IpAddress::fromString($stored)->value);
+    }
 }

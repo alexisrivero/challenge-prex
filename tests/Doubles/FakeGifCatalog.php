@@ -25,6 +25,8 @@ final class FakeGifCatalog implements GifCatalog
 
     public ?SearchCriteria $lastCriteria = null;
 
+    public int $findByIdCalls = 0;
+
     public static function withGifs(Gif ...$gifs): self
     {
         $catalog = new self;
@@ -79,6 +81,8 @@ final class FakeGifCatalog implements GifCatalog
 
     public function findById(GifId $id): Gif
     {
+        $this->findByIdCalls++;
+
         $this->guardAvailability();
 
         return $this->gifs[$id->value] ?? throw GifNotFound::withId($id);

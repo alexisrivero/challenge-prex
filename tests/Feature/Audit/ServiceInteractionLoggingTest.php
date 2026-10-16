@@ -9,6 +9,7 @@ use Laravel\Passport\Passport;
 use PHPUnit\Framework\Attributes\Test;
 use Prex\Audit\Infrastructure\Persistence\Eloquent\ServiceInteractionModel;
 use Prex\Auth\Infrastructure\Persistence\Eloquent\UserModel;
+use Prex\Shared\Infrastructure\Http\RequestUserContext;
 use Tests\Concerns\FakesGiphy;
 use Tests\Concerns\InteractsWithOAuth;
 use Tests\TestCase;
@@ -111,5 +112,41 @@ final class ServiceInteractionLoggingTest extends TestCase
         $this->getJson('/api/v1/gifs?query=cats')->assertOk();
 
         $this->assertDatabaseEmpty('service_interactions');
+    }
+
+    /**
+     * Regression: a query string with invalid UTF-8 made the JSON encoding of
+     * the row fail. The middleware reports its own failures and never breaks
+     * the response, so the call succeeded with 200 and left no trace at all -
+     * an audit bypass anyone could trigger with `?query=%FF`.
+     */
+    #[Test]
+    public function an_interaction_carrying_invalid_utf8_is_still_audited(): void
+    {
+        $this->fakeGiphySearch(['gif-1']);
+
+        $this->get('/api/v1/gifs?query=%FF&limit=1', ['Accept' => 'application/json'])->assertOk();
+
+        $interaction = ServiceInteractionModel::query()->sole();
+
+        self::assertSame('/api/v1/gifs', $interaction->path);
+        self::assertSame(200, $interaction->response_status);
+        self::assertArrayHasKey('query', $interaction->request_body);
+    }
+
+    /**
+     * Regression: the context was bound as a singleton, so under a long lived
+     * worker the identity of one request leaked into the audit row of the next.
+     */
+    #[Test]
+    public function the_caller_identity_does_not_survive_into_the_next_request(): void
+    {
+        $this->app->make(RequestUserContext::class)->rememberUser(42);
+
+        self::assertSame(42, $this->app->make(RequestUserContext::class)->userId());
+
+        $this->app->forgetScopedInstances();
+
+        self::assertNull($this->app->make(RequestUserContext::class)->userId());
     }
 }

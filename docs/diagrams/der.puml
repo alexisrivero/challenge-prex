@@ -19,7 +19,7 @@ entity "users" as users {
 }
 
 entity "favorite_gifs" as favorites {
-  * id : CHAR(36) <<PK>> <<uuid>>
+  * id : UUID <<PK>>
   --
   * user_id : BIGINT UNSIGNED <<FK users.id>>
   * gif_id : VARCHAR(64)
@@ -31,7 +31,7 @@ entity "favorite_gifs" as favorites {
 }
 
 entity "service_interactions" as interactions {
-  * id : CHAR(36) <<PK>> <<uuid>>
+  * id : UUID <<PK>>
   --
   user_id : BIGINT UNSIGNED <<FK users.id>> <<nullable>>
   * http_method : VARCHAR(10)
@@ -49,9 +49,9 @@ entity "service_interactions" as interactions {
 }
 
 entity "oauth_clients" as clients {
-  * id : CHAR(36) <<PK>> <<uuid>>
+  * id : UUID <<PK>>
   --
-  name : VARCHAR(255)
+  * name : VARCHAR(255)
   secret : VARCHAR(255) <<nullable>>
   provider : VARCHAR(255) <<nullable>>
   * redirect_uris : TEXT
@@ -60,10 +60,10 @@ entity "oauth_clients" as clients {
 }
 
 entity "oauth_access_tokens" as tokens {
-  * id : VARCHAR(100) <<PK>>
+  * id : CHAR(80) <<PK>>
   --
-  user_id : BIGINT UNSIGNED <<FK users.id>> <<nullable>>
-  * client_id : CHAR(36) <<FK oauth_clients.id>>
+  user_id : BIGINT UNSIGNED <<ref users.id>> <<nullable>>
+  * client_id : UUID <<ref oauth_clients.id>>
   name : VARCHAR(255)
   scopes : TEXT
   * revoked : BOOLEAN
@@ -71,9 +71,9 @@ entity "oauth_access_tokens" as tokens {
 }
 
 entity "oauth_refresh_tokens" as refresh {
-  * id : VARCHAR(100) <<PK>>
+  * id : CHAR(80) <<PK>>
   --
-  * access_token_id : VARCHAR(100) <<FK>>
+  * access_token_id : CHAR(80) <<ref oauth_access_tokens.id>>
   * revoked : BOOLEAN
   expires_at : DATETIME
 }
@@ -83,6 +83,18 @@ users ||--o{ interactions : "performs"
 users ||--o{ tokens : "owns"
 clients ||--o{ tokens : "issues"
 tokens ||--o| refresh : "can be renewed by"
+
+note as ForeignKeys
+  <b>FK</b> marks a foreign key enforced by the database;
+  <b>ref</b> marks a relation that only exists in the
+  application. The schema declares exactly two
+  constraints - favorite_gifs.user_id (ON DELETE
+  CASCADE) and service_interactions.user_id
+  (ON DELETE SET NULL); Passport's tables are
+  joined through indexes only, and client_id has
+  not even that. Passport's tables are drawn with
+  the columns that matter here, not all of them.
+end note
 
 note bottom of favorites
   gif_id is the GIPHY identifier: the catalog

@@ -28,7 +28,7 @@ else valid token
   Handler -> Port : search(SearchCriteria)
   Port -> Adapter : search(SearchCriteria)
   Adapter -> Giphy : GET /v1/gifs/search?q&limit&offset&api_key
-  alt provider unreachable / 5xx
+  alt provider unreachable, 5xx, 401/403/429
     Giphy --> Adapter : timeout or error
     Adapter --> Handler : throw GifCatalogUnavailable
     Handler --> Controller : 503 gif_catalog_unavailable

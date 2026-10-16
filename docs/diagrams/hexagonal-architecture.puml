@@ -53,7 +53,12 @@ Controllers --> UC2
 Controllers --> UC3
 Controllers --> UC4
 AuditMw --> UC5
-Console ..> A3
+note bottom of Console
+  Creates the OAuth2 clients through Passport's own
+  ClientRepository (writes oauth_clients). It is a
+  driving adapter of Passport, not of this hexagon:
+  it never goes through a port.
+end note
 
 UC1 --> P1
 UC1 --> P2

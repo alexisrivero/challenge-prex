@@ -39,6 +39,10 @@ else same user
   else not saved yet
     Handler -> Catalog : findById(GifId)
     Catalog -> Giphy : GET /v1/gifs/{id}
+    note over Catalog, Giphy
+      Any other provider failure - unreachable, 5xx,
+      401/403/429 - becomes 503 gif_catalog_unavailable.
+    end note
     alt gif does not exist
       Giphy --> Catalog : 404 (or 400/414/422)
       Handler --> Controller : throw GifNotFound

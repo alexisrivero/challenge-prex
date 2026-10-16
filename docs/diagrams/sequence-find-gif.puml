@@ -25,6 +25,11 @@ Handler -> Handler : GifId::fromString()\n(422 if malformed)
 Handler -> Port : findById(GifId)
 Port -> Adapter : findById(GifId)
 Adapter -> Giphy : GET /v1/gifs/{id}?api_key
+note over Port, Giphy
+  Any other provider failure - unreachable, 5xx,
+  401/403/429 - becomes 503 gif_catalog_unavailable.
+end note
+
 alt the id leads nowhere
   Giphy --> Adapter : 404, empty payload,\nor 400/414/422 (id the provider rejects)
   Adapter --> Handler : throw GifNotFound

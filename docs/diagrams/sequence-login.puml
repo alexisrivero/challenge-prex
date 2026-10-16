@@ -10,12 +10,14 @@ participant "nginx + Laravel" as Kernel
 participant "RecordServiceInteraction\n<<middleware>>" as Audit
 participant "LoginController\n<<primary adapter>>" as Controller
 participant "LoginHandler\n<<use case>>" as Handler
+participant "User\n<<entity>>" as User
 participant "UserRepository\n<<port>>" as UserPort
 participant "EloquentUserRepository\n<<adapter>>" as UserAdapter
 database "MariaDB" as DB
 participant "PasswordHasher\n<<port>>" as HasherPort
 participant "AccessTokenIssuer\n<<port>>" as TokenPort
 participant "Passport\n(OAuth2 server)" as Passport
+participant "ApiExceptionRenderer" as Renderer
 
 Client -> Kernel : POST /api/v1/auth/login\n{email, password}
 Kernel -> Audit : handle()
@@ -31,12 +33,18 @@ UserAdapter --> Handler : User (domain entity)
 alt user not found
   Handler -> HasherPort : verifyDecoy(PlainPassword)
   note right : same cost as a real verification,\nso the response time does not reveal\nwhich emails are registered
-  Handler --> Controller : throw InvalidCredentials
+  Handler ->x Controller : throw InvalidCredentials
+  Controller ->x Renderer : the exception leaves the controller
+  Renderer --> Kernel : 401 {"error": {code, message}}
 else user found
-  Handler -> HasherPort : matches(PlainPassword, HashedPassword)
-  HasherPort --> Handler : false
+  Handler -> User : authenticate(PlainPassword, PasswordHasher)
+  User -> HasherPort : matches(PlainPassword, HashedPassword)
+  HasherPort --> User : bool
+  User --> Handler : bool
   alt password mismatch
-    Handler --> Controller : throw InvalidCredentials
+    Handler ->x Controller : throw InvalidCredentials
+    Controller ->x Renderer : the exception leaves the controller
+    Renderer --> Kernel : 401 {"error": {code, message}}
   else password ok
     Handler -> TokenPort : issueFor(User)
     TokenPort -> Passport : createToken(name, scopes)
@@ -44,11 +52,11 @@ else user found
     Passport --> TokenPort : JWT + expires_in (30 min)
     TokenPort --> Handler : AccessToken
     Handler --> Controller : LoginResponse
+    Controller -> Controller : RequestUserContext::rememberUser(id)\n(only on success: an exception skips it)
+    Controller --> Kernel : 200 OK\n{access_token, token_type, expires_in,\nexpires_at, user}
   end
 end
 
-Controller -> Controller : RequestUserContext::rememberUser(id)
-Controller --> Kernel : 200 OK / 401 Unauthorized\n{access_token, token_type, expires_in, user}
 Kernel --> Client : response
 
 == after the response has been sent ==

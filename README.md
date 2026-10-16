@@ -8,7 +8,7 @@ interacciones** con los servicios.
 |---|---|
 | **Stack** | PHP 8.3 · Laravel 12 · Laravel Passport (OAuth2) · MariaDB 11.4 · nginx · Docker |
 | **Arquitectura** | Hexagonal + DDD · 3 bounded contexts (`Auth`, `Gifs`, `Audit`) + shared kernel |
-| **Tests** | 135 tests / 287 assertions (unitarios, de arquitectura y de feature) |
+| **Tests** | 135 tests / 289 assertions (unitarios, de arquitectura y de feature) |
 | **Levantar todo** | `cp .env.example .env` → setear `GIPHY_API_KEY` → `docker compose up -d --build` |
 
 ---

@@ -25,8 +25,8 @@ Handler -> Handler : GifId::fromString()\n(422 if malformed)
 Handler -> Port : findById(GifId)
 Port -> Adapter : findById(GifId)
 Adapter -> Giphy : GET /v1/gifs/{id}?api_key
-alt 404 or empty payload
-  Giphy --> Adapter : 404 Not Found
+alt the id leads nowhere
+  Giphy --> Adapter : 404, empty payload,\nor 400/414/422 (id the provider rejects)
   Adapter --> Handler : throw GifNotFound
   Handler --> Controller : 404 gif_not_found
 else found

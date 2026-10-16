@@ -28,29 +28,36 @@ alt user_id != authenticated user
   Handler --> Controller : throw CannotSaveFavoriteForAnotherUser
   Controller --> Kernel : 403 favorite_user_mismatch
 else same user
-  Handler -> Catalog : findById(GifId)
-  Catalog -> Giphy : GET /v1/gifs/{id}
-  alt gif does not exist
-    Giphy --> Catalog : 404
-    Handler --> Controller : throw GifNotFound
-    Controller --> Kernel : 404 gif_not_found
-  else gif exists
-    Giphy --> Catalog : 200 {data}
-    Catalog --> Handler : Gif
-    Handler -> Repo : findByUserAndGif(UserId, GifId)
-    Repo -> Adapter : findByUserAndGif(...)
-    Adapter -> DB : SELECT ... FROM favorite_gifs
-    DB --> Handler : existing favorite?
-    alt already saved
-      Handler --> Controller : throw FavoriteGifAlreadySaved
-      Controller --> Kernel : 409 favorite_gif_already_saved
-    else first time
+  note over Handler : the cheap checks run first, so a duplicate\nnever spends GIPHY quota
+  Handler -> Repo : findByUserAndGif(UserId, GifId)
+  Repo -> Adapter : findByUserAndGif(...)
+  Adapter -> DB : SELECT ... FROM favorite_gifs
+  DB --> Handler : existing favorite?
+  alt already saved
+    Handler --> Controller : throw FavoriteGifAlreadySaved
+    Controller --> Kernel : 409 favorite_gif_already_saved
+  else not saved yet
+    Handler -> Catalog : findById(GifId)
+    Catalog -> Giphy : GET /v1/gifs/{id}
+    alt gif does not exist
+      Giphy --> Catalog : 404 (or 400/414/422)
+      Handler --> Controller : throw GifNotFound
+      Controller --> Kernel : 404 gif_not_found
+    else gif exists
+      Giphy --> Catalog : 200 {data}
+      Catalog --> Handler : Gif
       Handler -> Handler : FavoriteGif::save(...)\n(UUID + saved_at from Clock)
       Handler -> Repo : save(FavoriteGif)
       Repo -> Adapter : save(FavoriteGif)
       Adapter -> DB : INSERT INTO favorite_gifs
-      Handler --> Controller : SaveFavoriteGifResponse
-      Controller --> Kernel : 201 Created {data}
+      alt another request won the race
+        DB --> Adapter : duplicate key (user_id, gif_id)
+        Adapter --> Controller : throw FavoriteGifAlreadySaved
+        Controller --> Kernel : 409 favorite_gif_already_saved
+      else inserted
+        Handler --> Controller : SaveFavoriteGifResponse
+        Controller --> Kernel : 201 Created {data}
+      end
     end
   end
 end

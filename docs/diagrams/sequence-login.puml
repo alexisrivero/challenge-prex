@@ -29,6 +29,8 @@ DB --> UserAdapter : row
 UserAdapter --> Handler : User (domain entity)
 
 alt user not found
+  Handler -> HasherPort : verifyDecoy(PlainPassword)
+  note right : same cost as a real verification,\nso the response time does not reveal\nwhich emails are registered
   Handler --> Controller : throw InvalidCredentials
 else user found
   Handler -> HasherPort : matches(PlainPassword, HashedPassword)
@@ -39,7 +41,7 @@ else user found
     Handler -> TokenPort : issueFor(User)
     TokenPort -> Passport : createToken(name, scopes)
     Passport -> DB : INSERT INTO oauth_access_tokens
-    Passport --> TokenPort : JWT + expires_in (1800s)
+    Passport --> TokenPort : JWT + expires_in (30 min)
     TokenPort --> Handler : AccessToken
     Handler --> Controller : LoginResponse
   end

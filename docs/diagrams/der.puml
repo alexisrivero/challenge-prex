@@ -45,6 +45,7 @@ entity "service_interactions" as interactions {
   --
   index (user_id, occurred_at)
   index (service_name), index (response_status)
+  index (occurred_at)
 }
 
 entity "oauth_clients" as clients {

@@ -36,7 +36,7 @@ logs: ## Follow the logs
 shell: ## Open a shell inside the app container
 	$(DC) exec app bash
 
-test: ## Run the whole test suite (in-memory SQLite, ~1.5s)
+test: ## Run the whole test suite (in-memory SQLite, ~1s)
 	$(APP) php artisan test
 
 test-mariadb: ## Run the whole test suite against MariaDB (same engine as production)

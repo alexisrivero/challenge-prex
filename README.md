@@ -8,7 +8,7 @@ interacciones** con los servicios.
 |---|---|
 | **Stack** | PHP 8.3 · Laravel 12 · Laravel Passport (OAuth2) · MariaDB 11.4 · nginx · Docker |
 | **Arquitectura** | Hexagonal + DDD · 3 bounded contexts (`Auth`, `Gifs`, `Audit`) + shared kernel |
-| **Tests** | 135 tests / 289 assertions (unitarios, de arquitectura y de feature) |
+| **Tests** | 149 tests / 318 assertions (unitarios, de arquitectura y de feature) |
 | **Levantar todo** | `cp .env.example .env` → setear `GIPHY_API_KEY` → `docker compose up -d --build` |
 
 ---
@@ -45,7 +45,7 @@ interacciones** con los servicios.
 | Servicio **Guardar GIF favorito** (gif_id, alias, user_id) | ✅ | `POST /api/v1/gifs/favorites` |
 | Los servicios requieren autenticación | ✅ | Middleware `auth:api` (guard Passport) en las 3 rutas de gifs |
 | Persistir toda interacción: usuario, servicio, body del request, status, body de la respuesta e IP | ✅ | Contexto `Audit` + middleware terminable `RecordServiceInteraction` |
-| Tests unitarios o de feature | ✅ | 135 tests: `tests/Unit`, `tests/Architecture`, `tests/Feature` |
+| Tests unitarios o de feature | ✅ | 149 tests: `tests/Unit`, `tests/Architecture`, `tests/Feature` |
 | PHP 8.3+ / Laravel 11+ / MariaDB o MySQL / Docker / UML | ✅ | `Dockerfile`, `docker-compose.yml`, `docs/diagrams/*.puml` |
 | README con despliegue + diagramas de casos de uso, secuencia y DER + colección Postman con automatización del token | ✅ | Este archivo · `docs/diagrams` · `postman/` |
 
@@ -235,8 +235,13 @@ Content-Type: application/json
 Reglas de negocio aplicadas, en orden:
 
 1. `user_id` debe coincidir con el usuario autenticado → `403 favorite_user_mismatch`.
-2. El gif debe existir en el catálogo → `404 gif_not_found`.
-3. El mismo usuario no puede guardar dos veces el mismo gif → `409 favorite_gif_already_saved`.
+2. El mismo usuario no puede guardar dos veces el mismo gif → `409 favorite_gif_already_saved`.
+3. El gif debe existir en el catálogo → `404 gif_not_found`.
+
+Las dos primeras se responden con lo que ya tenemos, así que un duplicado no gasta cuota de GIPHY ni
+depende de que el proveedor esté en pie. La regla 2 la decide en última instancia el índice único
+`(user_id, gif_id)`: dos peticiones simultáneas pasan ambas el chequeo previo, y la que pierde la carrera
+recibe el mismo `409` en lugar de un `500`.
 
 También acepta las claves en mayúsculas (`GIF_ID`, `ALIAS`, `USER_ID`).
 
@@ -255,7 +260,7 @@ Todos los errores comparten un único envelope:
 | `401` | `unauthenticated` | Falta el token, es inválido o expiró |
 | `401` | `invalid_credentials` | Email inexistente o password incorrecto (mismo mensaje para no filtrar qué emails existen) |
 | `403` | `favorite_user_mismatch` | Se intenta guardar un favorito para otro usuario |
-| `404` | `gif_not_found` | GIPHY no conoce ese gif |
+| `404` | `gif_not_found` | GIPHY no conoce ese gif, o rechaza el id (`400`/`414`/`422`) |
 | `404` | `endpoint_not_found` | Ruta inexistente (incluye ids con caracteres no permitidos) |
 | `409` | `favorite_gif_already_saved` | El usuario ya tenía ese gif como favorito |
 | `422` | `validation_failed` | Falla la validación de entrada (`error.errors` detalla cada campo) |
@@ -479,6 +484,9 @@ Características de la implementación:
 * **Nunca guarda secretos**: `Payload::redacting()` reemplaza por `[redacted]` las claves sensibles configuradas
   en `config/audit.php` (`password`, `access_token`, `secret`, …) a cualquier nivel de anidamiento.
 * **Acota el tamaño**: `Payload::truncated()` guarda un preview si el body supera `AUDIT_MAX_PAYLOAD_BYTES`.
+* **Nada de lo que mande el cliente lo deja afuera**: `Payload` normaliza a UTF-8 válido al construirse, y
+  trunca por caracteres y no por bytes. Sin eso, una petición con bytes inválidos (`?query=%FF`) hacía
+  fallar el encoding de la fila y —justamente por el punto anterior— la interacción se perdía en silencio.
 * **Audita también los errores**: un `401`, un `422` o un `503` quedan registrados con su body de error.
 * Se puede desactivar con `AUDIT_ENABLED=false`.
 
@@ -503,7 +511,7 @@ Ejemplo de registro de un login exitoso:
 ## 10. Tests
 
 ```bash
-make test              # toda la suite (~1,3 s)
+make test              # toda la suite (~1 s)
 make test-mariadb      # la misma suite, contra MariaDB
 make test-unit         # unitarios + arquitectura
 make test-feature      # sólo feature
@@ -520,7 +528,7 @@ docker compose exec app php artisan test --testsuite=Feature
 SQLite en ningún camino de ejecución productivo. La *suite de tests* es lo único que, por defecto, usa una
 base SQLite **en memoria**, por tres razones:
 
-* **velocidad**: 1,3 s contra 23 s, lo que la vuelve ejecutable en cada cambio;
+* **velocidad**: ~1 s contra más de 20 s, lo que la vuelve ejecutable en cada cambio;
 * **aislamiento**: nace y muere con el proceso, no deja estado entre corridas ni puede tocar datos reales;
 * **cero dependencias**: `php artisan test` funciona en un clone recién hecho y en CI sin levantar servicios.
 
@@ -530,8 +538,8 @@ El riesgo conocido de ese atajo es que SQLite y MariaDB no se comportan igual (c
 dos motores en jobs separados. Si preferís que MariaDB sea el modo por defecto, alcanza con cambiar una
 línea en `tests/bootstrap.php` (`$connection = $_SERVER['TEST_DB_CONNECTION'] ?? 'mariadb';`).
 
-Resultado actual: **135 tests, 289 assertions, OK** en los dos motores (1,3 s en SQLite en memoria,
-22,7 s en MariaDB). Ningún test necesita conexión a GIPHY: el proveedor se simula en el borde HTTP.
+Resultado actual: **149 tests, 318 assertions, OK** en los dos motores (algo más de 1 s en SQLite en
+memoria, algo más de 20 s en MariaDB). Ningún test necesita conexión a GIPHY: el proveedor se simula en el borde HTTP.
 
 > **La suite nunca toca la base de desarrollo.** PHPUnit aplica los `<env>` de `phpunit.xml` a `$_ENV` y
 > `putenv()`, pero el repositorio de entorno de Laravel lee `$_SERVER` primero: dentro del contenedor, donde
@@ -595,7 +603,8 @@ Resultado esperado: **25 assertions, 0 fallos**.
    otra persona. Se acepta el parámetro (compatibilidad con la especificación) y se exige que coincida con el
    dueño del token; si no, `403`.
 3. **Guardar favorito valida que el gif exista** en el catálogo antes de persistirlo, para no dejar favoritos
-   colgados. Como efecto secundario, la respuesta `201` ya incluye los datos del gif.
+   colgados — pero después de los chequeos de dueño y de duplicado, que se responden con lo que ya tenemos.
+   Como efecto secundario, la respuesta `201` ya incluye los datos del gif.
 4. **La salida de "guardar favorito" no es vacía.** La consigna no especifica salida; se devuelve `201 Created`
    con el recurso creado, que es lo habitual en REST y más útil para el cliente.
 5. **Identidades generadas por el dominio.** `favorite_gifs` y `service_interactions` usan UUID v4 creados en el

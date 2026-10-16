@@ -24,7 +24,7 @@ The API listens on <http://localhost:8080>. Demo credentials created by the seed
 ## Commands
 
 ```bash
-make test                      # whole suite, in-memory SQLite (~1.3s)
+make test                      # whole suite, in-memory SQLite (149 tests, ~1s)
 make test-mariadb              # same suite against MariaDB (schema prex_gifs_test)
 make test-unit                 # Unit + Architecture suites only
 make pint                      # fix code style (Laravel preset); `pint --test` in CI

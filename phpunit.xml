@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
 >
     <testsuites>
@@ -22,26 +22,31 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
+        <!-- force="true" on every variable: the test suite must always run in
+             its own sandbox (SQLite in memory, fake GIPHY key), even inside the
+             Docker container, where DB_CONNECTION & co. are real environment
+             variables that would otherwise shadow these values and point the
+             tests at the development database. -->
+        <env name="APP_ENV" value="testing" force="true"/>
         <!-- Fixed key so the suite runs on a fresh clone, before `php artisan key:generate`. -->
-        <env name="APP_KEY" value="base64:HWDs8tVZJy/KpFRkhOtG+c1DNXrPDCbD3R2k3qQDNXM="/>
-        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
-        <env name="BCRYPT_ROUNDS" value="4"/>
-        <env name="BROADCAST_CONNECTION" value="null"/>
-        <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="GIPHY_API_KEY" value="testing-giphy-key"/>
-        <env name="GIPHY_RETRIES" value="1"/>
-        <env name="GIPHY_RETRY_DELAY_MS" value="0"/>
-        <env name="OAUTH_ACCESS_TOKEN_TTL_MINUTES" value="30"/>
-        <env name="AUDIT_ENABLED" value="true"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
-        <env name="MAIL_MAILER" value="array"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
-        <env name="PULSE_ENABLED" value="false"/>
-        <env name="TELESCOPE_ENABLED" value="false"/>
-        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="APP_KEY" value="base64:HWDs8tVZJy/KpFRkhOtG+c1DNXrPDCbD3R2k3qQDNXM=" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="GIPHY_API_KEY" value="testing-giphy-key" force="true"/>
+        <env name="GIPHY_RETRIES" value="1" force="true"/>
+        <env name="GIPHY_RETRY_DELAY_MS" value="0" force="true"/>
+        <env name="OAUTH_ACCESS_TOKEN_TTL_MINUTES" value="30" force="true"/>
+        <env name="AUDIT_ENABLED" value="true" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
     </php>
 </phpunit>

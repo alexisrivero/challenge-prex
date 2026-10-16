@@ -17,7 +17,11 @@ services:
     image: prex/gifs-api:local
     container_name: prex-gifs-app
     restart: unless-stopped
-    env_file: .env
+    # No `env_file` on purpose: the project directory (including .env) is bind
+    # mounted below, so Laravel reads it directly. Injecting the same file as
+    # container environment would shadow it - a real environment variable always
+    # wins over .env, so an empty APP_KEY/GIPHY_API_KEY would break the app even
+    # after the entrypoint fills them in.
     environment:
       DB_CONNECTION: ${DB_CONNECTION:-mariadb}
       DB_HOST: ${DB_HOST:-database}

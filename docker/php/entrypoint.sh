@@ -17,9 +17,17 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
-if ! grep -qE '^APP_KEY=.+' .env; then
-    log 'Generating the application key'
-    php artisan key:generate --force --no-interaction
+if [ -z "${APP_KEY:-}" ]; then
+    if ! grep -qE '^APP_KEY=.+' .env; then
+        log 'Generating the application key'
+        php artisan key:generate --force --no-interaction
+    fi
+
+    # An APP_KEY present but empty in the container environment would shadow the
+    # one stored in .env, because Dotenv never overrides real environment
+    # variables. Exporting it keeps both sources in sync for php-fpm.
+    APP_KEY="$(grep -E '^APP_KEY=' .env | head -n1 | cut -d'=' -f2-)"
+    export APP_KEY
 fi
 
 # ---------------------------------------------------------------------------

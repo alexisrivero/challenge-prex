@@ -82,6 +82,11 @@ El entrypoint del contenedor es idempotente y se encarga de todo lo necesario en
 
 La API queda disponible en **<http://localhost:8080>** (puerto configurable con `APP_PORT`).
 
+> El servicio `app` no usa `env_file`: el proyecto (incluido `.env`) se monta en el contenedor y Laravel lo lee
+> directamente. Inyectar el mismo archivo como entorno del contenedor lo eclipsaría, porque una variable de
+> entorno real siempre gana sobre `.env` — un `APP_KEY=` vacío rompería la aplicación aun después de que el
+> entrypoint la complete.
+
 ### 2.3 Verificación rápida
 
 ```bash
@@ -131,7 +136,9 @@ Prefijo común: `/api/v1`. Todas las respuestas son JSON (`Accept: application/j
 ### 3.1 Login
 
 **Entrada:** `email` (requerido), `password` (requerido).
-**Salida:** token OAuth2 con expiración de 30 minutos.
+**Salida:** token OAuth2 con expiración de 30 minutos (`expires_in` puede devolver 1799 en vez de 1800:
+el servidor OAuth2 deriva la vida útil del instante exacto de emisión y el último segundo se pierde en
+el redondeo).
 
 ```http
 POST /api/v1/auth/login
@@ -146,7 +153,7 @@ Content-Type: application/json
     "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
     "token_type": "Bearer",
     "expires_in": 1800,
-    "expires_at": "2026-10-14T04:19:00+00:00",
+    "expires_at": "2026-10-16T04:19:00+00:00",
     "user": { "id": 1, "name": "Prex Demo User", "email": "demo@prex.local" }
   }
 }
@@ -503,8 +510,14 @@ docker compose exec app php artisan test --testsuite=Feature
 php artisan test
 ```
 
-Resultado actual: **135 tests, 287 assertions, OK** (los tests usan SQLite en memoria, no requieren MariaDB ni
-conexión a GIPHY).
+Resultado actual: **135 tests, 289 assertions, OK** en ~1,4 s (los tests usan SQLite en memoria, no
+requieren MariaDB ni conexión a GIPHY).
+
+> **La suite nunca toca la base de desarrollo.** PHPUnit aplica los `<env>` de `phpunit.xml` a `$_ENV` y
+> `putenv()`, pero el repositorio de entorno de Laravel lee `$_SERVER` primero: dentro del contenedor, donde
+> `DB_CONNECTION`/`DB_HOST` son variables de entorno reales, la suite habría corrido contra MariaDB
+> (migrándola y truncándola). `tests/bootstrap.php` sincroniza `$_SERVER` con lo que declara `phpunit.xml`,
+> de modo que los tests siempre corren aislados.
 
 | Suite | Qué cubre |
 |---|---|
@@ -533,6 +546,21 @@ En [`postman/`](postman) hay dos archivos para importar:
 * **GIFs → Search GIFs** guarda el primer resultado en `gif_id`, que usan *Get GIF by id* y *Save favorite GIF*.
 * Cada request incluye tests (status esperado, estructura de la respuesta, códigos de error de negocio), por lo
   que `Run collection` recorre el happy path y los casos de error 401/403/404/409/422.
+* La colección es **re-ejecutable**: *Search GIFs* consulta una página aleatoria del catálogo y guarda un gif
+  al azar, así *Save favorite GIF* siempre obtiene su `201` y el request siguiente demuestra el `409`.
+
+También se puede ejecutar sin abrir Postman, con [newman](https://github.com/postmanlabs/newman):
+
+```bash
+# el client id del password grant lo imprime: docker compose exec app php artisan oauth:ensure-clients
+docker run --rm --network challenge-prex_prex -v "$PWD/postman:/etc/newman:ro" postman/newman:alpine \
+  run Prex-GIFs-API.postman_collection.json \
+  -e Prex-GIFs-API.postman_environment.json \
+  --env-var base_url=http://nginx \
+  --env-var oauth_client_id=<client-id>
+```
+
+Resultado esperado: **25 assertions, 0 fallos**.
 
 ---
 

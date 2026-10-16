@@ -47,10 +47,10 @@
           "        console.warn('Automatic login failed; run Auth > Login manually.');",
           "        return;",
           "    }",
-          "    const data = response.json().data;",
-          "    pm.environment.set('access_token', data.access_token);",
-          "    pm.environment.set('token_expires_at', data.expires_at);",
-          "    pm.environment.set('user_id', data.user.id);",
+          "    const session = response.json().data;",
+          "    pm.environment.set('access_token', session.access_token);",
+          "    pm.environment.set('token_expires_at', session.expires_at);",
+          "    pm.environment.set('user_id', session.user.id);",
           "});"
         ]
       }
@@ -80,28 +80,29 @@
                   "// --- Automation required by the challenge -------------------------------",
                   "// The token returned by the login service is stored in the environment so",
                   "// every other request of the collection can use it automatically.",
+                  "// NOTE: `data` is reserved by the Postman sandbox (iteration data), so the",
+                  "// payload is bound to `session` instead.",
                   "pm.test('Status is 200 OK', function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "const body = pm.response.json();",
-                  "const data = body.data;",
+                  "const session = pm.response.json().data;",
                   "",
                   "pm.test('The response carries an OAuth2 bearer token', function () {",
-                  "    pm.expect(data).to.have.property('access_token').that.is.a('string').and.not.empty;",
-                  "    pm.expect(data.token_type).to.eql('Bearer');",
+                  "    pm.expect(session).to.have.property('access_token').that.is.a('string').and.not.empty;",
+                  "    pm.expect(session.token_type).to.eql('Bearer');",
                   "});",
                   "",
                   "pm.test('The token expires in 30 minutes', function () {",
-                  "    pm.expect(data.expires_in).to.eql(1800);",
+                  "    // Passport derives the lifetime from the issuing instant, so the\n    // last second can be lost in the rounding (1799).\n    pm.expect(session.expires_in).to.be.within(1790, 1800);",
                   "});",
                   "",
-                  "pm.environment.set('access_token', data.access_token);",
-                  "pm.environment.set('token_type', data.token_type);",
-                  "pm.environment.set('token_expires_at', data.expires_at);",
-                  "pm.environment.set('user_id', data.user.id);",
+                  "pm.environment.set('access_token', session.access_token);",
+                  "pm.environment.set('token_type', session.token_type);",
+                  "pm.environment.set('token_expires_at', session.expires_at);",
+                  "pm.environment.set('user_id', session.user.id);",
                   "",
-                  "console.log('Access token stored in the environment, expires at ' + data.expires_at);"
+                  "console.log('Access token stored in the environment, expires at ' + session.expires_at);"
                 ]
               }
             }
@@ -270,10 +271,22 @@
                 "type": "text/javascript",
                 "exec": [
                   "// Optional: the canonical OAuth2 endpoint exposed by Passport.",
-                  "// Requires OAUTH_ENABLE_PASSWORD_GRANT=true and the client id created",
-                  "// by `php artisan oauth:ensure-clients` (see oauth_client_id).",
-                  "if (pm.response.code === 200) {",
-                  "    pm.environment.set('access_token', pm.response.json().access_token);",
+                  "// Requires OAUTH_ENABLE_PASSWORD_GRANT=true and the client id created by",
+                  "// `php artisan oauth:ensure-clients` (environment variable oauth_client_id).",
+                  "const clientId = pm.environment.get('oauth_client_id');",
+                  "",
+                  "if (!clientId) {",
+                  "    console.log('Skipped: set oauth_client_id in the environment to test this flow.');",
+                  "} else {",
+                  "    pm.test('Status is 200 OK', function () {",
+                  "        pm.response.to.have.status(200);",
+                  "    });",
+                  "",
+                  "    pm.test('It issues a bearer token that expires in 30 minutes', function () {",
+                  "        const grant = pm.response.json();",
+                  "        pm.expect(grant.token_type).to.eql('Bearer');",
+                  "        // Passport derives expires_in from a DateInterval, so the last second\n        // can be lost in the rounding (1799).\n        pm.expect(grant.expires_in).to.be.within(1790, 1800);",
+                  "    });",
                   "}"
                 ]
               }
@@ -326,6 +339,20 @@
           "name": "Search GIFs",
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The catalog has hundreds of results for this term. Picking a random",
+                  "// page (and, in the test, a random gif of that page) keeps the whole",
+                  "// collection re-runnable: 'Save favorite GIF' expects a 201, and saving",
+                  "// the same gif twice is a conflict by design - which is exactly what",
+                  "// the next request, 'Save favorite GIF - duplicated (409)', asserts.",
+                  "pm.environment.set('search_offset', Math.floor(Math.random() * 400));"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
@@ -334,18 +361,22 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "const body = pm.response.json();",
+                  "const result = pm.response.json();",
                   "",
                   "pm.test('It returns a collection with pagination metadata', function () {",
-                  "    pm.expect(body.data).to.be.an('array');",
-                  "    pm.expect(body.meta).to.have.property('total_count');",
-                  "    pm.expect(body.meta).to.have.property('limit');",
-                  "    pm.expect(body.meta).to.have.property('offset');",
+                  "    pm.expect(result.data).to.be.an('array');",
+                  "    pm.expect(result.meta).to.have.property('total_count');",
+                  "    pm.expect(result.meta).to.have.property('limit');",
+                  "    pm.expect(result.meta).to.have.property('offset');",
                   "});",
                   "",
-                  "if (body.data.length > 0) {",
-                  "    pm.environment.set('gif_id', body.data[0].id);",
-                  "    console.log('gif_id stored: ' + body.data[0].id);",
+                  "if (result.data.length > 0) {",
+                  "    // A random pick keeps the collection re-runnable: saving the same gif",
+                  "    // twice is a conflict by design, which would break 'Save favorite GIF'",
+                  "    // on a second run.",
+                  "    const gif = result.data[Math.floor(Math.random() * result.data.length)];",
+                  "    pm.environment.set('gif_id', gif.id);",
+                  "    console.log('gif_id stored: ' + gif.id);",
                   "}"
                 ]
               }
@@ -360,7 +391,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/gifs?query=funny cat&limit=5&offset=0",
+              "raw": "{{base_url}}/api/v1/gifs?query=funny cat&limit=5&offset={{search_offset}}",
               "host": [
                 "{{base_url}}"
               ],
@@ -382,8 +413,8 @@
                 },
                 {
                   "key": "offset",
-                  "value": "0",
-                  "description": "optional|numeric (0-4999)"
+                  "value": "{{search_offset}}",
+                  "description": "optional|numeric (0-4999) - randomised by the pre-request script"
                 }
               ]
             },
@@ -403,10 +434,10 @@
                   "});",
                   "",
                   "pm.test('It returns the requested resource', function () {",
-                  "    const data = pm.response.json().data;",
-                  "    pm.expect(data.id).to.eql(pm.environment.get('gif_id'));",
-                  "    pm.expect(data).to.have.property('title');",
-                  "    pm.expect(data).to.have.property('images');",
+                  "    const gif = pm.response.json().data;",
+                  "    pm.expect(gif.id).to.eql(pm.environment.get('gif_id'));",
+                  "    pm.expect(gif).to.have.property('title');",
+                  "    pm.expect(gif).to.have.property('images');",
                   "});"
                 ]
               }
@@ -488,14 +519,18 @@
                   "    pm.response.to.have.status(201);",
                   "});",
                   "",
-                  "const data = pm.response.json().data;",
+                  "const favorite = pm.response.json().data;",
                   "",
                   "pm.test('The favorite belongs to the authenticated user', function () {",
-                  "    pm.expect(data.user_id).to.eql(Number(pm.environment.get('user_id')));",
-                  "    pm.expect(data.gif_id).to.eql(pm.environment.get('gif_id'));",
+                  "    pm.expect(favorite.user_id).to.eql(Number(pm.environment.get('user_id')));",
+                  "    pm.expect(favorite.gif_id).to.eql(pm.environment.get('gif_id'));",
                   "});",
                   "",
-                  "pm.environment.set('favorite_id', data.id);"
+                  "pm.test('It echoes the gif of the catalog', function () {",
+                  "    pm.expect(favorite.gif).to.have.property('title');",
+                  "});",
+                  "",
+                  "pm.environment.set('favorite_id', favorite.id);"
                 ]
               }
             }

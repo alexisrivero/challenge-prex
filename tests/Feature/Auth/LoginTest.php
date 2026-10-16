@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Prex\Audit\Domain\Payload;
 use Prex\Audit\Infrastructure\Persistence\Eloquent\ServiceInteractionModel;
+use Prex\Auth\Infrastructure\Persistence\Eloquent\UserModel;
 use Tests\Concerns\FakesGiphy;
 use Tests\Concerns\InteractsWithOAuth;
 use Tests\TestCase;
@@ -16,12 +17,14 @@ final class LoginTest extends TestCase
 {
     use FakesGiphy, InteractsWithOAuth, RefreshDatabase;
 
+    private UserModel $user;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->bootstrapOAuthServer();
-        $this->createUser();
+        $this->user = $this->createUser();
     }
 
     #[Test]
@@ -56,7 +59,11 @@ final class LoginTest extends TestCase
             'password' => 'password',
         ]);
 
-        self::assertSame(30 * 60, $response->json('data.expires_in'));
+        // Passport derives the lifetime from the issuing instant, so the last
+        // second can be lost in the rounding: the contract is "30 minutes",
+        // not an exact amount of seconds.
+        self::assertGreaterThan(30 * 60 - 10, $response->json('data.expires_in'));
+        self::assertLessThanOrEqual(30 * 60, $response->json('data.expires_in'));
     }
 
     #[Test]
@@ -124,7 +131,7 @@ final class LoginTest extends TestCase
         self::assertSame('POST', $interaction->http_method);
         self::assertSame('/api/v1/auth/login', $interaction->path);
         self::assertSame(200, $interaction->response_status);
-        self::assertSame(1, $interaction->user_id, 'A successful login is attributed to the user.');
+        self::assertSame($this->user->id, $interaction->user_id, 'A successful login is attributed to the user.');
         self::assertSame('ada@prex.local', $interaction->request_body['email']);
         self::assertSame(Payload::REDACTED, $interaction->request_body['password']);
         self::assertSame(Payload::REDACTED, $interaction->response_body['data']['access_token']);

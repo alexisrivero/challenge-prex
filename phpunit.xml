@@ -34,14 +34,14 @@
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
         <env name="BROADCAST_CONNECTION" value="null" force="true"/>
         <env name="CACHE_STORE" value="array" force="true"/>
-        <env name="DB_CONNECTION" value="sqlite" force="true"/>
         <env name="GIPHY_API_KEY" value="testing-giphy-key" force="true"/>
         <env name="GIPHY_RETRIES" value="1" force="true"/>
         <env name="GIPHY_RETRY_DELAY_MS" value="0" force="true"/>
         <env name="OAUTH_ACCESS_TOKEN_TTL_MINUTES" value="30" force="true"/>
         <env name="AUDIT_ENABLED" value="true" force="true"/>
-        <env name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="DB_URL" value="" force="true"/>
+        <!-- DB_CONNECTION / DB_DATABASE are decided in tests/bootstrap.php:
+             in-memory SQLite by default, MariaDB with TEST_DB_CONNECTION=mariadb. -->
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>

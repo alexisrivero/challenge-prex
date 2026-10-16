@@ -118,7 +118,9 @@ php artisan db:seed
 php artisan serve               # http://127.0.0.1:8000
 ```
 
-Para desarrollo rápido se puede usar SQLite: `DB_CONNECTION=sqlite` y `DB_DATABASE=/ruta/absoluta/database/database.sqlite`.
+Requiere un MariaDB (o MySQL) accesible: ajustá `DB_HOST`, `DB_DATABASE`, `DB_USERNAME` y `DB_PASSWORD`
+en el `.env`. La aplicación corre siempre sobre MariaDB/MySQL; SQLite se usa únicamente como base de
+la suite de tests (ver [Tests](#10-tests)).
 
 ---
 
@@ -501,17 +503,35 @@ Ejemplo de registro de un login exitoso:
 ## 10. Tests
 
 ```bash
-docker compose exec app php artisan test          # todo
-docker compose exec app php artisan test --testsuite=Unit
-docker compose exec app php artisan test --testsuite=Architecture
-docker compose exec app php artisan test --testsuite=Feature
+make test              # toda la suite (~1,3 s)
+make test-mariadb      # la misma suite, contra MariaDB
+make test-unit         # unitarios + arquitectura
+make test-feature      # sólo feature
 
-# o, sin Docker
-php artisan test
+# equivalentes sin Makefile
+docker compose exec app php artisan test
+docker compose exec -e TEST_DB_CONNECTION=mariadb app php artisan test
+docker compose exec app php artisan test --testsuite=Feature
 ```
 
-Resultado actual: **135 tests, 289 assertions, OK** en ~1,4 s (los tests usan SQLite en memoria, no
-requieren MariaDB ni conexión a GIPHY).
+### ¿Por qué la suite corre sobre SQLite por defecto?
+
+**La aplicación siempre usa MariaDB** (`config/database.php`, `docker-compose.yml`, `.env.example`): no hay
+SQLite en ningún camino de ejecución productivo. La *suite de tests* es lo único que, por defecto, usa una
+base SQLite **en memoria**, por tres razones:
+
+* **velocidad**: 1,3 s contra 23 s, lo que la vuelve ejecutable en cada cambio;
+* **aislamiento**: nace y muere con el proceso, no deja estado entre corridas ni puede tocar datos reales;
+* **cero dependencias**: `php artisan test` funciona en un clone recién hecho y en CI sin levantar servicios.
+
+El riesgo conocido de ese atajo es que SQLite y MariaDB no se comportan igual (columnas `JSON`, índices
+únicos, claves foráneas, modo estricto). Por eso **la misma suite corre también contra MariaDB** con
+`make test-mariadb` (usa la base `prex_gifs_test`, nunca la de desarrollo), y el workflow de CI ejecuta los
+dos motores en jobs separados. Si preferís que MariaDB sea el modo por defecto, alcanza con cambiar una
+línea en `tests/bootstrap.php` (`$connection = $_SERVER['TEST_DB_CONNECTION'] ?? 'mariadb';`).
+
+Resultado actual: **135 tests, 289 assertions, OK** en los dos motores (1,3 s en SQLite en memoria,
+22,7 s en MariaDB). Ningún test necesita conexión a GIPHY: el proveedor se simula en el borde HTTP.
 
 > **La suite nunca toca la base de desarrollo.** PHPUnit aplica los `<env>` de `phpunit.xml` a `$_ENV` y
 > `putenv()`, pero el repositorio de entorno de Laravel lee `$_SERVER` primero: dentro del contenedor, donde

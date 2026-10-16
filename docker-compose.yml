@@ -63,6 +63,8 @@ services:
       - "${DB_FORWARD_PORT:-33061}:3306"
     volumes:
       - db-data:/var/lib/mysql
+      # Creates the prex_gifs_test database used by `make test-mariadb`.
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s

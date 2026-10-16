@@ -7,7 +7,7 @@ on:
 
 jobs:
   tests:
-    name: Tests & code style
+    name: Tests (SQLite) & code style
     runs-on: ubuntu-latest
 
     steps:
@@ -17,7 +17,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: mbstring, pdo_sqlite, sodium, intl, bcmath, zip
+          extensions: mbstring, pdo_sqlite, pdo_mysql, sodium, intl, bcmath, zip
           coverage: none
 
       - name: Install dependencies
@@ -27,4 +27,47 @@ jobs:
         run: ./vendor/bin/pint --test
 
       - name: Run the test suite
+        run: php artisan test
+
+  tests-mariadb:
+    name: Tests (MariaDB, same engine as production)
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: prex_gifs_test
+          MARIADB_USER: prex
+          MARIADB_PASSWORD: secret
+          MARIADB_ROOT_PASSWORD: root-secret
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, pdo_mysql, sodium, intl, bcmath, zip
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run the test suite against MariaDB
+        env:
+          TEST_DB_CONNECTION: mariadb
+          TEST_DB_DATABASE: prex_gifs_test
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_USERNAME: prex
+          DB_PASSWORD: secret
         run: php artisan test

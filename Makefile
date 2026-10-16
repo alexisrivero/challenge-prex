@@ -7,7 +7,7 @@ DC := docker compose
 APP := $(DC) exec -T app
 
 .DEFAULT_GOAL := help
-.PHONY: help env up build down restart logs shell test test-unit test-feature \
+.PHONY: help env up build down restart logs shell test test-mariadb test-unit test-feature \
         migrate fresh seed keys clients pint routes
 
 help: ## Show this help
@@ -36,8 +36,14 @@ logs: ## Follow the logs
 shell: ## Open a shell inside the app container
 	$(DC) exec app bash
 
-test: ## Run the whole test suite
+test: ## Run the whole test suite (in-memory SQLite, ~1.5s)
 	$(APP) php artisan test
+
+test-mariadb: ## Run the whole test suite against MariaDB (same engine as production)
+	$(DC) exec -T database mariadb -uroot -p$${DB_ROOT_PASSWORD:-root-secret} -e \
+		"CREATE DATABASE IF NOT EXISTS prex_gifs_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; \
+		 GRANT ALL PRIVILEGES ON prex_gifs_test.* TO '$${DB_USERNAME:-prex}'@'%'; FLUSH PRIVILEGES;"
+	$(DC) exec -T -e TEST_DB_CONNECTION=mariadb app php artisan test
 
 test-unit: ## Run the unit + architecture tests only
 	$(APP) php artisan test --testsuite=Unit,Architecture
